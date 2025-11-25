@@ -1,0 +1,228 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thanos-ruler
+  namespace: thanos
+  labels:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: ruler
+data:
+  ruler.yml: {}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: thanos-ruler-alertmanagers-config
+  namespace: thanos
+  labels:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: ruler
+data:
+  alertmanagers_config.yml: |-
+    YWxlcnRtYW5hZ2VyczoKICAtIGh0dHBfY29uZmlnOgogICAgICBiYXNpY19hdXRoOgogICAgICAgIHVzZXJuYW1lOiAiIgogICAgICAgIHBhc3N3b3JkOiAiIgogICAgc3RhdGljX2NvbmZpZ3M6CiAgICAgIC0gYWxlcnRtYW5hZ2VyLnRoYW5vcy5zdmMuY2x1c3Rlci5sb2NhbDo5MDkzCiAgICBzY2hlbWU6IGh0dHAKICAgIHRpbWVvdXQ6IDEwcwogICAgYXBpX3ZlcnNpb246IHYyCg==
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: thanos-ruler
+  namespace: thanos
+  labels:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: ruler
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-ruler
+  namespace: thanos
+  labels:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: ruler
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9090
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: 10901
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+  selector:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: ruler
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: ruler
+    app.kubernetes.io/name: thanos
+  name: thanos-ruler-headless
+  namespace: thanos
+spec:
+  clusterIP: None
+  clusterIPs:
+  - None
+  ports:
+    - port: 9090
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: 10901
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+  selector:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: ruler
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: thanos-ruler
+  namespace: thanos
+  labels:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: ruler
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  podManagementPolicy: OrderedReady
+  serviceName: thanos-ruler-headless
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: thanos
+      app.kubernetes.io/component: ruler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: thanos
+        app.kubernetes.io/component: ruler
+    spec:
+      serviceAccountName: thanos-ruler
+      automountServiceAccountToken: true
+      affinity:          
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/instance: thanos
+                    app.kubernetes.io/name: thanos
+                    app.kubernetes.io/component: ruler
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+        nodeAffinity:
+      securityContext:
+        fsGroup: 1001
+        fsGroupChangePolicy: Always
+        supplementalGroups: []
+        sysctls: []
+      containers:
+        - name: ruler
+          image: bitnamilegacy/thanos:0.39.2-debian-12-r2
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 1001
+            seLinuxOptions: {}
+            seccompProfile:
+              type: RuntimeDefault
+          args:
+            - rule
+            - --log.level=info
+            - --log.format=logfmt
+            - --grpc-address=0.0.0.0:10901
+            - --http-address=0.0.0.0:10902
+            - --data-dir=/data
+            - --eval-interval=1m
+            - --alertmanagers.config-file=/conf/alertmanagers/alertmanagers_config.yml
+            - --query=dnssrv+_http._tcp.thanos-query.$(NAMESPACE).svc.cluster.local
+            - --alert.query-url=https://thanos-query.xxxx.com
+            - --label=replica="$(POD_NAME)"
+            - --label=ruler_cluster=""
+            - --alert.label-drop=replica
+            - --objstore.config-file=/conf/objstore/objstore.yml
+            - --rule-file=/conf/rules/*.yml
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: http
+              containerPort: 10902
+              protocol: TCP
+            - name: grpc
+              containerPort: 10901
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 30
+            httpGet:
+              path: /-/healthy
+              port: http
+              scheme: HTTP
+          readinessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 30
+            httpGet:
+              path: /-/ready
+              port: http
+              scheme: HTTP
+          resources:
+            limits:
+              cpu: 500m
+              memory: 2048Mi
+            requests:
+              cpu: 300m
+              memory: 256Mi
+          volumeMounts:
+            - name: ruler-config
+              mountPath: /conf/rules
+            - name: objstore-config
+              mountPath: /conf/objstore
+            - name: data
+              mountPath: /data
+            - name: alertmanagers-config
+              mountPath: /conf/alertmanagers
+      volumes:
+        - name: ruler-config
+          configMap:
+            name: thanos-ruler
+        - name: objstore-config
+          secret:
+            secretName: thanos-objstore-secret
+        - name: alertmanagers-config
+          secret:
+            secretName: thanos-ruler-alertmanagers-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: "20Gi"
+        storageClassName: alicloud-disk-essd
