@@ -13,7 +13,7 @@ kind: Kustomization
 patches:
 - path: patch-deployment.yaml
 labels:
-- includeSelectors: true
+- includeSelectors: false
   pairs:
     environment: dev
     project: acme-gly-web
