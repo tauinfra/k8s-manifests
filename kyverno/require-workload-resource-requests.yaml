@@ -1,0 +1,79 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-workload-resource-requests
+spec:
+  admission: true
+  background: true
+  emitWarning: false
+  rules:
+  - match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - StatefulSet
+          - DaemonSet
+          - Job
+          namespaces:
+          - default
+    name: require-workload-template-resources
+    skipBackgroundRequests: true
+    validate:
+      allowExistingViolations: true
+      cel:
+        expressions:
+        - expression: |-
+            object.spec.template.spec.containers.all(c,
+              has(c.resources) && has(c.resources.requests) &&
+              has(c.resources.requests.cpu) && string(c.resources.requests.cpu) != "" &&
+              has(c.resources.requests.memory) && string(c.resources.requests.memory) != ""
+            )
+          message: '[资源审计] 工作负载 Pod 模板中的每个容器须在 resources.requests 中配置 cpu、memory。'
+        generate: false
+  - match:
+      any:
+      - resources:
+          kinds:
+          - CronJob
+          namespaces:
+          - default
+    name: require-cronjob-template-resources
+    skipBackgroundRequests: true
+    validate:
+      allowExistingViolations: true
+      cel:
+        expressions:
+        - expression: |-
+            object.spec.jobTemplate.spec.template.spec.containers.all(c,
+              has(c.resources) && has(c.resources.requests) &&
+              has(c.resources.requests.cpu) && string(c.resources.requests.cpu) != "" &&
+              has(c.resources.requests.memory) && string(c.resources.requests.memory) != ""
+            )
+          message: '[资源审计] CronJob jobTemplate 中每个容器须在 resources.requests 中配置 cpu、memory。'
+        generate: false
+  - match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+          namespaces:
+          - default
+    name: require-standalone-pod-resources
+    skipBackgroundRequests: true
+    validate:
+      allowExistingViolations: true
+      cel:
+        expressions:
+        - expression: |-
+            (!has(object.metadata.ownerReferences) || object.metadata.ownerReferences.size() == 0)
+              ? object.spec.containers.all(c,
+                  has(c.resources) && has(c.resources.requests) &&
+                  has(c.resources.requests.cpu) && string(c.resources.requests.cpu) != "" &&
+                  has(c.resources.requests.memory) && string(c.resources.requests.memory) != ""
+                )
+              : true
+          message: '[资源审计] 独立 Pod 的每个容器须在 resources.requests 中配置 cpu、memory； 由 Deployment
+            等控制器创建的 Pod 请修改对应工作负载。'
+        generate: false
+  validationFailureAction: Audit

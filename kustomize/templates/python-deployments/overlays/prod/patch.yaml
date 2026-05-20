@@ -1,0 +1,17 @@
+# overlays/dev/patch.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-deployment
+spec:
+  template:
+    spec:
+      containers:
+        - name: python-deployment
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "512Mi"

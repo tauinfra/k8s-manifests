@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: acme-gly-web-dev-nginx-deployment
+  namespace: argocd
+spec:
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  project: acme-gly-web
+  source:
+    path: kustomize/acme-gly-web/nginx-deployment/overlays/dev
+    repoURL: https://gitlab.com/valyrias/kubernetes.git
+    targetRevision: HEAD
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: acme-gly-web-test-nginx-deployment
+  namespace: argocd
+spec:
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  project: acme-gly-web
+  source:
+    path: kustomize/acme-gly-web/nginx-deployment/overlays/test
+    repoURL: https://gitlab.com/valyrias/kubernetes.git
+    targetRevision: HEAD
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: acme-gly-web-prod-nginx-deployment
+  namespace: argocd
+spec:
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  project: acme-gly-web
+  source:
+    path: kustomize/acme-gly-web/nginx-deployment/overlays/prod
+    repoURL: https://gitlab.com/valyrias/kubernetes.git
+    targetRevision: HEAD

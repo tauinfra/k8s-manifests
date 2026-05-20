@@ -1,0 +1,137 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: clone-code
+  namespace: tekton-ci
+spec:
+  workspaces:
+    - name: workspace
+  params:
+    - name: code_repo_url
+      type: string
+    - name: code_repo_revision
+      type: string
+  steps:
+    - name: clone-code
+      image: alpine/git
+      workingDir: $(workspaces.workspace.path)/code
+      script: |
+        sleep 120
+        echo "gitlab code_repo_url: $(params.code_repo_url)"
+        git clone -b $(params.code_repo_revision) $(params.code_repo_url) .
+        git rev-parse HEAD
+        git show -s --format='%H %an %ad %s'
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: build-golang-1.22
+  namespace: tekton-ci
+spec:
+  workspaces:
+    - name: workspace
+  params:
+    - name: script
+      type: string
+  steps:
+    - name: build-code
+      image: alpine/git
+      workingDir: $(workspaces.workspace.path)/code
+      script: |
+        set -e
+        echo "build-code golang......"
+        sleep 30
+        echo "build-code golang done......"
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: docker-build
+  namespace: tekton-ci
+spec:
+  workspaces:
+    - name: workspace
+  params:
+    - name: image
+      type: string
+    - name: image_tag
+      type: string
+  steps:
+    - name: docker-build
+      image: alpine/git
+      workingDir: $(workspaces.workspace.path)/code
+      script: |
+        set -e
+        echo "docker-build golang......"
+        sleep 30
+        echo "docker-build golang done......"
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: kustomize-config
+  namespace: tekton-ci
+spec:
+  workspaces:
+    - name: workspace
+  params:
+    - name: kustomize_repo_url
+      type: string
+    - name: kustomize_repo_revision
+      type: string
+    - name: kustomize_path
+      type: string
+    - name: image
+      type: string
+    - name: image_tag
+      type: string
+  steps:
+    - name: kustomize-config
+      image: alpine/git
+      workingDir: $(workspaces.workspace.path)/config
+      script: |
+        set -e
+        GIT_REPO_URL=$(echo $(params.kustomize_repo_url) | sed "s#https://#https://oauth2:$GITLAB_TOKEN@#")
+        # 安装kustomize
+        wget -q https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv4.5.7/kustomize_v4.5.7_linux_amd64.tar.gz
+        tar -xzf kustomize_v4.5.7_linux_amd64.tar.gz
+        chmod +x kustomize
+        mv kustomize /usr/bin/ && rm -f kustomize_v4.5.7_linux_amd64.tar.gz
+        git clone -b $(params.kustomize_repo_revision) $GIT_REPO_URL .
+        cd $(params.kustomize_path)
+        kustomize edit set image $(params.image):$(params.image_tag)
+        if [ -n "$(git status --porcelain)" ]; then
+          git config user.email "tekton-ci@company.com"
+          git config user.name "tekton-ci"
+          git add .
+          git commit -m "Update image $(params.image):$(params.image_tag)"
+          git push
+        else
+          echo "No changes to commit"
+        fi
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: deploy-argocd
+  namespace: tekton-ci
+spec:
+  params:
+    - name: argocd_server
+      type: string
+    - name: argocd_app
+      type: string
+  steps:
+    - name: deploy-argocd
+      image: argoproj/argocd:v2.6.15
+      env:
+      - name: ARGOCD_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: tekton-argocd
+            key: token
+      script: |
+        set -e
+        argocd login $(params.argocd_server) --username admin --password $ARGOCD_TOKEN --insecure
+        argocd app sync $(params.argocd_app)
+        argocd app wait $(params.argocd_app) --health --timeout 300

@@ -1,0 +1,33 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: release-pipelinerun
+  namespace: tekton-ci
+spec:
+  serviceAccountName: tekton-bot
+  pipelineRef:
+    name: release-pipeline
+  workspaces:
+    - name: workspace
+      emptyDir: {}
+  params:
+    - name: image
+      value: nginx
+    - name: image_tag
+      value: 1.24
+    - name: code_repo_url
+      value: git@gitlab.com:valyrias/kubernetes.git
+    - name: code_repo_revision
+      value: main
+    - name: kustomize_repo_url
+      value: git@gitlab.com:valyrias/kubernetes.git
+    - name: kustomize_repo_revision
+      value: main
+    - name: kustomize_path
+      value: kustomize/acme-gly-web/nginx-deployment/overlays/dev
+    - name: argocd_server
+      value: argocd-server.argocd.svc
+    - name: argocd_app
+      value: acme-gly-web-dev-nginx-deployment
+    - name: script
+      value: "shell script"

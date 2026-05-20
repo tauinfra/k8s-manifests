@@ -90,6 +90,28 @@ spec:
     app.kubernetes.io/name: thanos
     app.kubernetes.io/component: receive
 ---
+apiVersion: v1
+kind: Service
+metadata:
+    prometheus.io/path: /metrics
+    prometheus.io/port: '10902'
+    prometheus.io/scrape: 'true'
+  name: thanos-receive-metcris
+  namespace: thanos
+  labels:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: receive
+spec:
+  type: ClusterIP
+  ports:
+    - port: 10902
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: thanos
+    app.kubernetes.io/component: receive
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:

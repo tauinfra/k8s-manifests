@@ -1,0 +1,44 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-service-selector
+spec:
+  validationFailureAction: Audit # 灰度审计阶段
+  background: true
+  rules:
+    - name: require-service-selector
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+              namespaces:
+                - default # 核心修正 1：直接在入口卡死，只管 default 空间，其他空间连看都不看
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - default
+              names:
+                - kubernetes # 核心修正 2：只排除 default 下的那个特殊原生 kubernetes svc
+      # ------------------ 前置条件：严谨的类型过滤 ------------------
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.type || 'ClusterIP' }}"
+            operator: AnyIn
+            value:
+              - ClusterIP
+              - NodePort
+              - LoadBalancer
+      # ------------------ 正确的 Selector 存在性校验 ------------------
+      validate:
+        # 提示语同步平台级高标准：加入实例名称 [{{ request.name }}]
+        message: "[网络审计 - 拦截] 空间 {{ request.namespace }} 中的 Service [{{ request.name }}] 标签声明不合规，必须在 metadata.labels 中配置 'team' 和 'app'，且必须在 spec.selector 中指定 'app' 路由键。"
+        pattern:
+          metadata:
+            labels:
+              app: "?*"
+              team: "?*"
+          spec:
+            selector:
+              app: "?*"

@@ -1,0 +1,17 @@
+# overlays/dev/patch.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: springboot-deployment
+spec:
+  template:
+    spec:
+      containers:
+        - name: springboot-deployment
+          env:
+            - name: JVM_OPTS
+              value: "-Xms200m -Xmx200m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp -XX:+UseZGC"
+            - name: NACOS_SERVER_ADDR
+              value: nacos-dev:8848
+            - name: NACOS_NAMESPACE
+              value: DEFAULT

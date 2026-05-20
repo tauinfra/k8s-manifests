@@ -1,0 +1,71 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: release-pipeline
+  namespace: tekton-ci
+spec:
+  workspaces:
+    - name: workspace
+  params:
+    - name: code_repo_url
+    - name: code_repo_revision
+    - name: kustomize_repo_url
+    - name: kustomize_repo_revision
+    - name: kustomize_path
+    - name: image
+    - name: image_tag
+    - name: argocd_server
+    - name: argocd_app
+    - name: script
+  tasks:
+    - name: clone-code
+      taskRef:
+        name: clone-code
+      workspaces:
+        - name: workspace
+          workspace: workspace
+      params:
+        - name: code_repo_url
+          value: $(params.code_repo_url)
+        - name: code_repo_revision
+          value: $(params.code_repo_revision)
+    - name: build-code
+      taskRef:
+        name: build-golang-1.22
+      runAfter:
+        - clone-code
+      workspaces:
+        - name: workspace
+          workspace: workspace
+      params:
+        - name: script
+          value: $(params.script)
+    - name: kustomize-config
+      taskRef:
+        name: kustomize-config
+      runAfter:
+        - build-code
+      workspaces:
+        - name: workspace
+          workspace: workspace
+      params:
+        - name: kustomize_repo_url
+          value: $(params.kustomize_repo_url)
+        - name: kustomize_repo_revision
+          value: $(params.kustomize_repo_revision)
+        - name: kustomize_path
+          value: $(params.kustomize_path)
+        - name: image
+          value: $(params.image)
+        - name: image_tag
+          value: $(params.image_tag)
+    - name: deploy-argocd
+      taskRef:
+        name: deploy-argocd
+      runAfter:
+        - kustomize-config
+      params:
+        - name: argocd_server
+          value: $(params.argocd_server)
+        - name: argocd_app
+          value: $(params.argocd_app)

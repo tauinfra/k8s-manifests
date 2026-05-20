@@ -1,0 +1,61 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-workload-labels
+spec:
+  admission: true
+  background: true
+  emitWarning: false
+  rules:
+  - match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - StatefulSet
+          - DaemonSet
+          - Job
+          namespaces:
+          - default
+    name: require-workload-labels
+    skipBackgroundRequests: true
+    validate:
+      allowExistingViolations: true
+      cel:
+        expressions:
+        - expression: has(object.metadata.labels) && "team" in object.metadata.labels
+            && string(object.metadata.labels.team) != "" && "app" in object.metadata.labels
+            && string(object.metadata.labels.app) != "" && has(object.spec.template)
+            && has(object.spec.template.metadata) && has(object.spec.template.metadata.labels)
+            && "team" in object.spec.template.metadata.labels && string(object.spec.template.metadata.labels.team)
+            != "" && "app" in object.spec.template.metadata.labels && string(object.spec.template.metadata.labels.app)
+            != ""
+          message: '[标签审计] Deployment/StatefulSet/DaemonSet/Job 须在 metadata.labels
+            与 spec.template.metadata.labels 同时配置非空的 team、app 标签。'
+        generate: false
+  - match:
+      any:
+      - resources:
+          kinds:
+          - CronJob
+          namespaces:
+          - default
+    name: require-cronjob-labels
+    skipBackgroundRequests: true
+    validate:
+      allowExistingViolations: true
+      cel:
+        expressions:
+        - expression: has(object.metadata.labels) && "team" in object.metadata.labels
+            && string(object.metadata.labels.team) != "" && "app" in object.metadata.labels
+            && string(object.metadata.labels.app) != "" && has(object.spec.jobTemplate)
+            && has(object.spec.jobTemplate.spec) && has(object.spec.jobTemplate.spec.template)
+            && has(object.spec.jobTemplate.spec.template.metadata) && has(object.spec.jobTemplate.spec.template.metadata.labels)
+            && "team" in object.spec.jobTemplate.spec.template.metadata.labels &&
+            string(object.spec.jobTemplate.spec.template.metadata.labels.team) !=
+            "" && "app" in object.spec.jobTemplate.spec.template.metadata.labels &&
+            string(object.spec.jobTemplate.spec.template.metadata.labels.app) != ""
+          message: '[标签审计] CronJob 须在 metadata.labels 与 spec.jobTemplate.spec.template.metadata.labels
+            同时配置非空的 team、app 标签。'
+        generate: false
+  validationFailureAction: Audit

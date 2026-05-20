@@ -1,0 +1,74 @@
+apiVersion: core.k8sgpt.ai/v1alpha1
+kind: K8sGPT
+metadata:
+  name: k8sgpt-analyzer-agent
+  namespace: k8sgpt-operator-system
+spec:
+  ai:
+    enabled: true
+    model: gpt-4o-mini
+    backend: openai
+    secret:
+      key: openai-api-key
+      name: k8sgpt-api-key-secret
+  # 1. 核心 AI 引擎配置
+  ai:
+    enabled: true
+    backend: openai
+    baseUrl: https://openai.proxy.com/v1 # openAI 代理地址，proxyEndpoint 实际测试不生效
+    model: gpt-4o-mini # 生产建议保持 gpt-4o-mini 或同级别轻量模型，性价比最高
+    secret:
+      name: k8sgpt-client-secret
+      key: openai-api-key
+    
+    # 【生产必备】开启数据脱敏：在将错误日志/配置发送给外部大模型前，
+    # 自动对集群内的敏感信息（如 IP、Pod 名称、Namespace、敏感环境变量）进行掩码或哈希处理，确保金融级安全与合规。
+    anonymized: true
+    
+    # 【本地化优化】直接指定大模型使用中文回答，免去二次翻译，方便研发阅读
+    language: chinese
+    
+    # 【高可用】网络重试机制，防止因国际网络波动（如对接官方 OpenAI API）导致诊断中断
+    backOff:
+      enabled: true
+      maxRetries: 5
+      
+    # 【网络隔离】如果在交易所 IDC 内部，无法直接访问公网，可在此配置内网代理
+    # proxyEndpoint: http://your-internal-proxy:8080 
+
+  # 2. 运行时配置
+  noCache: false # 开启缓存（false代表使用缓存），防止同一个重复报错在短时间内疯狂调用大模型，压垮 API Token 配额
+  repository: ghcr.io/k8sgpt-ai/k8sgpt
+  version: v0.4.32
+
+  # 3. 【核心协同】过滤器配置：明确告诉 K8sGPT 重点看哪些资源
+  # 如果不配置，默认会扫描全集群所有原生资源。为了配合你的自研平台和 Kyverno，必须针对性开启。
+  filters:
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - ReplicaSet
+    - Pod
+    - Job
+    - CronJob
+    - Service
+    - Ingress
+    - PersistentVolumeClaim
+    - HorizontalPodAutoscaler
+    - PodDisruptionBudget
+    - NetworkPolicy
+    - Node
+
+  # 4. 【多云平台集成】数据下沉配置
+  # 在生产中，除了在终端看，我们更希望它能把诊断结果主动推出来
+  # sink:
+  #   type: webhook
+      # 【黄金实践】将诊断出的 JSON 结果实时推送到你们自研多云管理平台的 Go 后端接口
+      # 你的 Go 服务收到后，可以直接在前端 UI 渲染出漂亮的 AI 诊断大盘，或者精准路由推送给对应的 team 负责人。
+  #   endpoint: http://kube-ops-backend.trading-system.svc.cluster.local:8080/api/v1/aops/webhook
+    
+  # 5. 集成生态（可选）
+  # integrations:
+  #   trivy:
+  #     enabled: true # 如果集群里部署了 Trivy 镜像漏洞扫描，开启此项可让 AI 自动分析容器的安全漏洞并给出修复建议
+  #     namespace: k8sgpt-operator-system

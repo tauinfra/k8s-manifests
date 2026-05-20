@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: acme-gly-web
+  namespace: argocd
+spec:
+  description: "acme-gly services"
+  sourceRepos:
+    # GitOps 仓库地址
+    - https://gitlab.com/valyrias/kubernetes.git
+  destinations:
+    # 基于项目限制部署命名空间
+    - namespace: default
+      server: https://kubernetes.default.svc
+  # 禁止所有 cluster resource，避免更新 cluster 资源，只允许更新服务资源
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+---

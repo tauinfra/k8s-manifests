@@ -1,0 +1,50 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: namespace-delete-protection
+spec:
+  validationFailureAction: Enforce # Audit 审计 Enforce 强制拦截
+  background: false
+  rules:
+    # 规则一：死卡系统核心命名空间，绝对不允许删除
+    - name: deny-delete-system-namespaces
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      preconditions:
+        all:
+          - key: "{{ request.operation }}"
+            operator: Equals
+            value: DELETE
+          - key: "{{ request.object.metadata.name }}"
+            operator: In
+            value:
+              - kube-system
+              - default
+              - kube-public
+              - kube-node-lease
+      validate:
+        message: "[安全拦截] 核心系统空间 ({request.object.metadata.name}) 为集群基石，禁止执行删除操作！"
+        deny: {}
+
+    # 规则二：保护带有特定标签的业务命名空间
+    - name: deny-namespace-delete-when-protected
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      preconditions:
+        all:
+          - key: "{{ request.operation }}"
+            operator: Equals
+            value: DELETE
+          # 直接读取旧对象的标签进行删除前校验，避免使用 JMESPath 表达式导致解释失败
+          - key: "{{ request.object.metadata.labels.\"platform.io/protected\" }}"
+            operator: Equals
+            value: "true"
+      validate:
+        message: "[平台保护] 空间 ({request.object.metadata.name}) 已开启防误删锁 (platform.io/protected=true)，禁止直接删除。如需删除，请联系运维人员。"
+        deny: {}
